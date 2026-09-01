@@ -56,19 +56,20 @@ async def main(message: cl.Message):
     history.append({"role": "user", "content": message.content})
     temp = cl.user_session.get("temperature")
 
-    msg = cl.Message(content="Thinking...")
+    msg = cl.Message(content="...")
     await msg.send()
 
-    response = await client.chat.completions.create(
+    stream = await client.chat.completions.create(
         model="gpt-5-nano",
         messages=history,
         temperature=temp,
-        stream=False,
+        stream=True,
     )
+    async for chunk in stream:
+        if chunk.choices[0].delta.content is not None:
+            await msg.stream_token(chunk.choices[0].delta.content)
 
-    answer = response.choices[0].message.content
-
-    history.append({"role": "assistant", "content": str(answer)})
-    msg.content = str(answer)
+    history.append({"role": "assistant", "content": str(msg.content)})
+ 
 
     await msg.update()
