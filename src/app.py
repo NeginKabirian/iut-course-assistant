@@ -38,6 +38,7 @@ async def auth(username, password):
     # To Do: real authentication
     return cl.User(identifier=username)
 
+
 @cl.on_chat_start
 async def start():
     settings = cl.ChatSettings(
@@ -59,8 +60,21 @@ async def start():
 
 @cl.on_settings_update
 async def setup_agent(settings):
-    pass
+    new_temp = settings["Temperature"]
+    cl.user_session.set("temperature",new_temp)
+    print(f"Temperature updated to: {new_temp}")
 
+@cl.on_chat_resume
+async def on_chat_resume(thread: dict):
+    history = [{"role": "system", "content":SYSTEM_PROMPT}]
+    for step in thread["steps"]:
+        if step["type"] == "user_message":
+            history.append({"role":"user" , "content": step["output"]})
+        elif step["type"] == "assistant_message":
+            history.append({"role":"assistant", "content": step["output"]})
+    cl.user_session.set("message_history",history)
+    cl.user_session.set("temperature",1.0)
+    print(f"Chat resumed! Loaded {len(history)} messages from database.")
 
 @cl.on_message
 async def main(message: cl.Message):
@@ -72,7 +86,7 @@ async def main(message: cl.Message):
     await msg.send()
 
     stream = await client.chat.completions.create(
-        model="gpt-5-nano",  # "gpt-4o-mini"
+        model="gpt-4o-mini",  # "gpt-4o-mini"
         messages=history,
         temperature=temp,
         stream=True,
