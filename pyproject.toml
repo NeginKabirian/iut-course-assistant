@@ -6,11 +6,14 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "aiofiles>=25.1.0",
+    "alembic>=1.19.1",
     "anyio>=4.14.2",
+    "asyncpg>=0.31.0",
     "chainlit>=2.12.0",
     "fastapi>=0.141.1",
     "openai>=3.6.0",
     "python-dotenv>=1.2.3",
+    "sqlalchemy>=2.0.52",
     "starlette>=1.6.0",
     "uvicorn>=0.52.4",
 ]

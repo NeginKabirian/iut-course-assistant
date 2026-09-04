@@ -2,13 +2,21 @@ import chainlit as cl
 from openai import AsyncOpenAI
 import os
 from dotenv import load_dotenv
+from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
+import chainlit.data as cl_data
+
+
 
 load_dotenv()
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+cl_data._data_layer = SQLAlchemyDataLayer(conninfo=DATABASE_URL)
 
 API_KEY = os.environ.get("API_KEY")
 client = AsyncOpenAI(
     api_key=API_KEY.strip(),
     base_url="https://api.metisai.ir/openai/v1",
+    
 )
 
 SYSTEM_PROMPT = """
@@ -25,6 +33,10 @@ Rules you MUST follow:
 - Keep your answers concise and well-formatted using markdown (bullet points, bold text).
 """
 
+@cl.password_auth_callback
+async def auth(username, password):
+    # To Do: real authentication
+    return cl.User(identifier=username)
 
 @cl.on_chat_start
 async def start():
@@ -60,14 +72,15 @@ async def main(message: cl.Message):
     await msg.send()
 
     stream = await client.chat.completions.create(
-        model="gpt-5-nano",
+        model="gpt-5-nano",  # "gpt-4o-mini"
         messages=history,
         temperature=temp,
         stream=True,
     )
     async for chunk in stream:
-        if chunk.choices[0].delta.content is not None:
-            await msg.stream_token(chunk.choices[0].delta.content)
+        if chunk.choices and len(chunk.choices) > 0:
+            if chunk.choices[0].delta.content is not None:
+                await msg.stream_token(chunk.choices[0].delta.content)
 
     history.append({"role": "assistant", "content": str(msg.content)})
  
