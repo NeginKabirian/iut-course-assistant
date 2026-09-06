@@ -6,7 +6,6 @@ from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
 import chainlit.data as cl_data
 
 
-
 load_dotenv()
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
@@ -16,7 +15,6 @@ API_KEY = os.environ.get("API_KEY")
 client = AsyncOpenAI(
     api_key=API_KEY.strip(),
     base_url="https://api.metisai.ir/openai/v1",
-    
 )
 
 '''
@@ -73,20 +71,22 @@ async def start():
 @cl.on_settings_update
 async def setup_agent(settings):
     new_temp = settings["Temperature"]
-    cl.user_session.set("temperature",new_temp)
+    cl.user_session.set("temperature", new_temp)
     print(f"Temperature updated to: {new_temp}")
+
 
 @cl.on_chat_resume
 async def on_chat_resume(thread: dict):
-    history = [{"role": "system", "content":SYSTEM_PROMPT}]
+    history = [{"role": "system", "content": SYSTEM_PROMPT}]
     for step in thread["steps"]:
         if step["type"] == "user_message":
-            history.append({"role":"user" , "content": step["output"]})
+            history.append({"role": "user", "content": step["output"]})
         elif step["type"] == "assistant_message":
-            history.append({"role":"assistant", "content": step["output"]})
-    cl.user_session.set("message_history",history)
-    cl.user_session.set("temperature",1.0)
+            history.append({"role": "assistant", "content": step["output"]})
+    cl.user_session.set("message_history", history)
+    cl.user_session.set("temperature", 1.0)
     print(f"Chat resumed! Loaded {len(history)} messages from database.")
+
 
 @cl.on_message
 async def main(message: cl.Message):
@@ -104,7 +104,6 @@ async def main(message: cl.Message):
         stream=True,
     )
 
-
     full_response = ""
 
     async for chunk in stream:
@@ -113,9 +112,6 @@ async def main(message: cl.Message):
             full_response += token
             await msg.stream_token(token)
 
-    history.append({
-        "role": "assistant",
-        "content": full_response
-    })
+    history.append({"role": "assistant", "content": full_response})
 
     await msg.update()
