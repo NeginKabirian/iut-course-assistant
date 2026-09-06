@@ -100,4 +100,8 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
-    pass
+    op.execute('DROP TABLE IF EXISTS feedbacks')
+    op.execute('DROP TABLE IF EXISTS elements')
+    op.execute('DROP TABLE IF EXISTS steps')
+    op.execute('DROP TABLE IF EXISTS threads')
+    op.execute('DROP TABLE IF EXISTS users')

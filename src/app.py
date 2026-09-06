@@ -19,6 +19,7 @@ client = AsyncOpenAI(
     
 )
 
+'''
 SYSTEM_PROMPT = """
 You are an elite Senior Technical Recruiter and Career Coach specializing in the Tech & Software Engineering industry.
 Your main goals are:
@@ -32,6 +33,17 @@ Rules you MUST follow:
 - When reviewing or answering, provide specific, actionable feedback rather than generic advice.
 - Keep your answers concise and well-formatted using markdown (bullet points, bold text).
 """
+'''
+
+SYSTEM_PROMPT = """
+شما یک دستیار هوشمند و مودب برای راهنمایی دانشجویان دانشگاه صنعتی اصفهان هستید.
+وظیفه شما پاسخگویی به سوالات دانشجویان درباره لیست دروس، اساتید، واحدها،مکان ها و ظرفیت‌هاست.
+قوانین:
+- فقط بر اساس اطلاعاتی (Context) که به شما داده می‌شود پاسخ دهید.
+- اگر جواب سوال در اطلاعات داده شده نبود، بگویید "متاسفانه اطلاعاتی در این باره ندارم."
+- پاسخ‌ها را خوانا، کوتاه و در صورت نیاز به صورت بولت‌پوینت بنویسید.
+"""
+
 
 @cl.password_auth_callback
 async def auth(username, password):
@@ -82,7 +94,7 @@ async def main(message: cl.Message):
     history.append({"role": "user", "content": message.content})
     temp = cl.user_session.get("temperature")
 
-    msg = cl.Message(content="...")
+    msg = cl.Message(content="")
     await msg.send()
 
     stream = await client.chat.completions.create(
@@ -91,12 +103,19 @@ async def main(message: cl.Message):
         temperature=temp,
         stream=True,
     )
-    async for chunk in stream:
-        if chunk.choices and len(chunk.choices) > 0:
-            if chunk.choices[0].delta.content is not None:
-                await msg.stream_token(chunk.choices[0].delta.content)
 
-    history.append({"role": "assistant", "content": str(msg.content)})
- 
+
+    full_response = ""
+
+    async for chunk in stream:
+        if chunk.choices and chunk.choices[0].delta.content:
+            token = chunk.choices[0].delta.content
+            full_response += token
+            await msg.stream_token(token)
+
+    history.append({
+        "role": "assistant",
+        "content": full_response
+    })
 
     await msg.update()
