@@ -1,43 +1,125 @@
 import os
+import pandas as pd
 from dotenv import load_dotenv
 from openai import OpenAI
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
 
+os.environ["no_proxy"] = "localhost,127.0.0.1,::1"
+os.environ["NO_PROXY"] = "localhost,127.0.0.1,::1"
+
 load_dotenv()
 API_KEY = os.environ.get("API_KEY")
-BASE_URL = os.environ.get("BASE_URL")
+BASE_URL = os.environ.get("BASE_URL", "https://api.metisai.ir/openai/v1")
 
+print("Connecting to OpenAI and Qdrant...")
 client = OpenAI(api_key=API_KEY.strip(), base_url=BASE_URL.strip())
-
 qdrant = QdrantClient(url="http://127.0.0.1:6333")
-
 COLLECTION_NAME = "iut_courses"
 
 
-if not qdrant.collection_exists(COLLECTION_NAME):
-    qdrant.create_collection(
-        collection_name=COLLECTION_NAME,
-        vectors_config=VectorParams(size=1536, distance=Distance.COSINE),
-    )
-    print(f"Collection '{COLLECTION_NAME}' created successfully.")
-else:
-    print(f"Collection '{COLLECTION_NAME}' already exists.")
+if qdrant.collection_exists(COLLECTION_NAME):
+    qdrant.delete_collection(COLLECTION_NAME)
+    print(f"Old collection '{COLLECTION_NAME}' deleted.")
 
-sample_documents = [
-    "درس مبانی مکاترونیک با شماره گروه ۰۱_۱۷۱۶۴۳۵، به ارزش ۳ واحد، با ظرفیت ۲۵ نفر برای جنسیت مختلط توسط استاد جلالی بیدگلی حامد ارائه می‌شود.",
-    "درس سیستم‌های کنترل خطی با شماره گروه ۰۱_۱۷۱۶۳۱۰، به ارزش ۳ واحد، با ظرفیت ۵۰ نفر توسط استاد شیخ الاسلام فرید ارائه می‌شود.",
-    "درس آزمایشگاه سیستم عامل با شماره گروه ۰۱_۱۷۳۴۳۰۴ توسط استاد زالی زینب ارائه می‌شود و ظرفیت آن ۱۶ نفر است.",
+qdrant.create_collection(
+    collection_name=COLLECTION_NAME,
+    vectors_config=VectorParams(size=1536, distance=Distance.COSINE),
+)
+print(f"Collection '{COLLECTION_NAME}' created successfully.\n")
+
+
+print("Reading and processing Excel file...")
+df = pd.read_excel("courses.xlsx", skiprows=2, header=None)
+
+df.columns = [
+    "code", "name", "total_units", "prac_units", "capacity",
+    "registered", "waitlist", "gender", "prof_name", "prof_type",
+    "prof_role", "time_loc", "description"
 ]
 
-points = []
-for i, doc in enumerate(sample_documents):
-    response = client.embeddings.create(input=doc, model="text-embedding-3-small")
-    embedding_vector = response.data[0].embedding
 
-    point = PointStruct(id=i + 1, vector=embedding_vector, payload={"text": doc})
-    points.append(point)
+header_repeat_idx = df.index[df["code"] == "شماره و گروه درس"].tolist()
+rows_to_drop = set()
+for i in header_repeat_idx:
+    rows_to_drop.update(range(max(i - 2, 0), i + 2))  
 
-qdrant.upsert(collection_name=COLLECTION_NAME, points=points)
+df = df.drop(index=[i for i in rows_to_drop if i in df.index]).reset_index(drop=True)
+print(f"Removed {len(rows_to_drop)} repeated page-header rows ({len(header_repeat_idx)} blocks).\n")
 
-print(f"Successfully indexed {len(points)} documents into Qdrant!")
+
+group_id = df["code"].notna().cumsum()
+cols_to_fill = ["code", "name", "total_units", "prac_units", "capacity", "registered", "waitlist", "gender", "description"]
+df[cols_to_fill] = df.groupby(group_id)[cols_to_fill].ffill()
+df = df.fillna("")
+
+grouped_courses = df.groupby("code")
+documents = []
+
+for code, group in grouped_courses:
+    first_row = group.iloc[0]
+
+    base_text = (
+        f"درس '{first_row['name']}' در دانشگاه صنعتی اصفهان (IUT) با شماره گروه {code}، "
+        f"تعداد واحد کل: {str(first_row['total_units']).replace('.0', '')}، "
+        f"ظرفیت کل: {str(first_row['capacity']).replace('.0', '')} نفر، "
+        f"تعداد ثبت‌نام شده: {str(first_row['registered']).replace('.0', '')} نفر، "
+        f"لیست انتظار: {str(first_row['waitlist']).replace('.0', '')} نفر، "
+        f"جنسیت مجاز: {first_row['gender']}. "
+    )
+
+    prof_details = []
+    for index, row in group.iterrows():
+        prof = str(row['prof_name']).strip()
+        role = str(row['prof_role']).strip()
+        time_l = str(row['time_loc']).strip()
+
+        if prof:
+            detail = f"استاد/دستیار: {prof} (مسئولیت: {role})"
+            if time_l:
+                detail += f" | زمان و مکان: {time_l}"
+            prof_details.append(detail)
+
+    if prof_details:
+        base_text += "جزئیات اساتید و زمان برگزاری: [" + " ؛ ".join(prof_details) + "]. "
+
+    if str(first_row['description']).strip():
+        base_text += f"توضیحات تکمیلی: {first_row['description']}"
+
+    documents.append({
+        "text": base_text,
+        "course_name": first_row['name']
+    })
+print(f"Extracted {len(documents)} rich courses.\n")
+print("Starting embedding process (this might take a minute)...")
+BATCH_SIZE = 50
+total_indexed = 0
+
+for i in range(0, len(documents), BATCH_SIZE):
+    batch_docs = documents[i:i + BATCH_SIZE]
+    texts_to_embed = [doc["text"] for doc in batch_docs]
+    response = client.embeddings.create(
+        input=texts_to_embed,
+        model="text-embedding-3-small"
+    )
+
+    points = []
+    for j, res in enumerate(response.data):
+        point = PointStruct(
+            id=total_indexed + j + 1,
+            vector=res.embedding,
+            payload={
+                "text": batch_docs[j]["text"],
+                "course_name": batch_docs[j]["course_name"]
+            }
+        )
+        points.append(point)
+
+    qdrant.upsert(
+        collection_name=COLLECTION_NAME,
+        points=points
+    )
+    total_indexed += len(points)
+    print(f"Indexed {total_indexed}/{len(documents)} courses...")
+
+print("\nAll rich data successfully embedded and stored in Qdrant!")

@@ -4,7 +4,7 @@ import os
 from dotenv import load_dotenv
 from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
 import chainlit.data as cl_data
-
+from qdrant_client import AsyncQdrantClient
 
 load_dotenv()
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -17,10 +17,13 @@ client = AsyncOpenAI(
     api_key=API_KEY.strip(),
     base_url=BASE_URL.strip(),
 )
+qdrant = AsyncQdrantClient(url="http://127.0.0.1:6333")
+COLLECTION_NAME = "iut_courses"
+
 
 SYSTEM_PROMPT = """
 شما یک دستیار هوشمند و مودب برای راهنمایی دانشجویان دانشگاه صنعتی اصفهان هستید.
-وظیفه شما پاسخگویی به سوالات دانشجویان درباره لیست دروس، اساتید، واحدها،مکان ها و ظرفیت‌هاست.
+وظیفه شما پاسخگویی به سوالات دانشجویان درباره لیست دروس، اساتید، واحدها،مکانها و ظرفیت‌هاست.
 قوانین:
 - فقط بر اساس اطلاعاتی (Context) که به شما داده می‌شود پاسخ دهید.
 - اگر جواب سوال در اطلاعات داده شده نبود، بگویید "متاسفانه اطلاعاتی در این باره ندارم."
@@ -41,7 +44,7 @@ async def start():
             cl.input_widget.Slider(
                 id="Temperature",
                 label="Temperature",
-                initial=1.0,
+                initial=0.1,
                 min=0.0,
                 max=2.0,
                 step=0.1,
@@ -76,9 +79,27 @@ async def on_chat_resume(thread: dict):
 @cl.on_message
 async def main(message: cl.Message):
     history = cl.user_session.get("message_history")
-    history.append({"role": "user", "content": message.content})
     temp = cl.user_session.get("temperature")
 
+    user_query = message.content
+    embed_user_query = await client.embeddings.create(
+        input=user_query, model="text-embedding-3-small"
+    )
+    query_vector = embed_user_query.data[0].embedding
+    search_res = await qdrant.query_points(
+        collection_name=COLLECTION_NAME, query=query_vector, limit=3
+    )
+
+    context_text = "\n".join([record.payload["text"] for record in search_res.points])
+
+    rag_prompt = f""" 
+    اطلاعات زیر از دیتابیس دانشگاه استخراج شده است:
+    {context_text}
+    
+    با توجه به اطلاعات بالا به این سوال پاسخ بده:
+    {user_query}
+    """
+    history.append({"role": "user", "content": rag_prompt})
     msg = cl.Message(content="")
     await msg.send()
 
@@ -97,6 +118,7 @@ async def main(message: cl.Message):
             full_response += token
             await msg.stream_token(token)
 
+    history[-1]["content"] = user_query
     history.append({"role": "assistant", "content": full_response})
 
     await msg.update()
