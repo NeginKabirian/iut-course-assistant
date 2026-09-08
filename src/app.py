@@ -26,8 +26,8 @@ SYSTEM_PROMPT = """
 وظیفه شما پاسخگویی به سوالات دانشجویان درباره لیست دروس، اساتید، واحدها،مکانها و ظرفیت‌هاست.
 قوانین:
 - فقط بر اساس اطلاعاتی (Context) که به شما داده می‌شود پاسخ دهید.
-- اگر جواب سوال در اطلاعات داده شده نبود، بگویید "متاسفانه اطلاعاتی در این باره ندارم."
-- پاسخ‌ها را خوانا، کوتاه و در صورت نیاز به صورت بولت‌پوینت بنویسید.
+- .اگر جواب سوال در اطلاعات داده شده نبود، بگویید "متاسفانه اطلاعاتی در این باره ندارم"
+- .پاسخ‌ها را خوانا، کوتاه و در صورت نیاز به صورت بولت‌پوینت بنویسید
 """
 
 
@@ -82,12 +82,38 @@ async def main(message: cl.Message):
     temp = cl.user_session.get("temperature")
 
     user_query = message.content
+    search_query = user_query
+
+    if len(history) > 1:
+        recent_history = "\n".join(
+            [
+                f"{msg['role']}: {msg['content']}"
+                for msg in history[-5:]
+                if msg["role"] != "system"
+            ]
+        )
+
+        rewrite_prompt = [
+            {
+                "role": "system",
+                "content": "تو یک دستیار هوشمند هستی. وظیفه تو این است که با توجه به تاریخچه مکالمه، سوالِ جدیدِ کاربر را به یک سوال کامل، شفاف و مستقل تبدیل کنی که بدون نیاز به تاریخچه قابل جستجو باشد. فقط خودِ سوال را بنویس و هیچ کلمه اضافه‌ای نگو.",
+            },
+            {
+                "role": "user",
+                "content": f"تاریخچه:\n{recent_history}\n\nسوال جدید کاربر: {user_query}\n\nسوال مستقل و کامل:",
+            },
+        ]
+        rewrite_response = await client.chat.completions.create(
+            model="gpt-4o-mini", messages=rewrite_prompt, temperature=0.0, stream=False
+        )
+        search_query = rewrite_response.choices[0].message.content.strip()
+        print(f"Original: {user_query} | Rewritten: {search_query}")
     embed_user_query = await client.embeddings.create(
-        input=user_query, model="text-embedding-3-small"
+        input=search_query, model="text-embedding-3-small"
     )
     query_vector = embed_user_query.data[0].embedding
     search_res = await qdrant.query_points(
-        collection_name=COLLECTION_NAME, query=query_vector, limit=3
+        collection_name=COLLECTION_NAME, query=query_vector, limit=8
     )
 
     context_text = "\n".join([record.payload["text"] for record in search_res.points])
@@ -97,7 +123,7 @@ async def main(message: cl.Message):
     {context_text}
     
     با توجه به اطلاعات بالا به این سوال پاسخ بده:
-    {user_query}
+    {search_query}
     """
     history.append({"role": "user", "content": rag_prompt})
     msg = cl.Message(content="")
