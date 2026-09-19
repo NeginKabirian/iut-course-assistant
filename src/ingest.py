@@ -1,3 +1,4 @@
+
 import os
 import pandas as pd
 from dotenv import load_dotenv
@@ -48,19 +49,16 @@ df.columns = [
     "description",
 ]
 
-
 header_repeat_idx = df.index[df["code"] == "شماره و گروه درس"].tolist()
 rows_to_drop = set()
 for i in header_repeat_idx:
     rows_to_drop.update(range(max(i - 2, 0), i + 2))
 
 df = df.drop(index=[i for i in rows_to_drop if i in df.index]).reset_index(drop=True)
-print(
-    f"Removed {len(rows_to_drop)} repeated page-header rows ({len(header_repeat_idx)} blocks).\n"
-)
-
+print(f"Removed {len(rows_to_drop)} repeated page-header rows ({len(header_repeat_idx)} blocks).\n")
 
 group_id = df["code"].notna().cumsum()
+
 cols_to_fill = [
     "code",
     "name",
@@ -70,6 +68,9 @@ cols_to_fill = [
     "registered",
     "waitlist",
     "gender",
+    "prof_name",  
+    "prof_type", 
+    "prof_role", 
     "description",
 ]
 df[cols_to_fill] = df.groupby(group_id)[cols_to_fill].ffill()
@@ -90,17 +91,29 @@ for code, group in grouped_courses:
         f"جنسیت مجاز: {first_row['gender']}. "
     )
 
-    prof_details = []
+    prof_dict = {}
     for index, row in group.iterrows():
         prof = str(row["prof_name"]).strip()
         role = str(row["prof_role"]).strip()
-        time_l = str(row["time_loc"]).strip()
+        time_l = str(row["time_loc"]).strip().replace('\n', ' ').replace('\r', '')
 
         if prof:
-            detail = f"استاد/دستیار: {prof} (مسئولیت: {role})"
+            prof_key = f"{prof} (مسئولیت: {role})"
+            if prof_key not in prof_dict:
+                prof_dict[prof_key] = []
+            
             if time_l:
-                detail += f" | زمان و مکان: {time_l}"
-            prof_details.append(detail)
+                prof_dict[prof_key].append(time_l)
+
+  
+    prof_details = []
+    for p_key, times in prof_dict.items():
+        if times:
+            
+            times_str = " و ".join(times) 
+            prof_details.append(f"استاد/دستیار: {p_key} | زمان و مکان: {times_str}")
+        else:
+            prof_details.append(f"استاد/دستیار: {p_key}")
 
     if prof_details:
         base_text += "جزئیات اساتید و زمان برگزاری: [" + " ؛ ".join(prof_details) + "]. "
@@ -109,6 +122,7 @@ for code, group in grouped_courses:
         base_text += f"توضیحات تکمیلی: {first_row['description']}"
 
     documents.append({"text": base_text, "course_name": first_row["name"]})
+
 print(f"Extracted {len(documents)} rich courses.\n")
 print("Starting embedding process (this might take a minute)...")
 BATCH_SIZE = 50
