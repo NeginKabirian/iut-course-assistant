@@ -10,6 +10,7 @@ dependencies = [
     "anyio>=4.14.2",
     "asyncpg>=0.31.0",
     "chainlit>=2.12.0",
+    "dotenv>=0.9.9",
     "fastapi>=0.141.1",
     "openai>=3.6.0",
     "openpyxl>=3.1.5",
@@ -23,5 +24,6 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "pytest-asyncio>=1.4.0",
     "ruff>=0.16.5",
 ]
