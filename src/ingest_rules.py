@@ -12,10 +12,11 @@ os.environ["NO_PROXY"] = "localhost,127.0.0.1,::1"
 load_dotenv()
 API_KEY = os.environ.get("API_KEY")
 BASE_URL = os.environ.get("BASE_URL", "https://api.metisai.ir/openai/v1")
+QDRANT_URL = os.environ.get("QDRANT_URL", "http://127.0.0.1:6333")
 
 print("Connecting to OpenAI and Qdrant...")
 client = OpenAI(api_key=API_KEY.strip(), base_url=BASE_URL.strip())
-qdrant = QdrantClient(url="http://127.0.0.1:6333")
+qdrant = QdrantClient(url=QDRANT_URL)
 COLLECTION_NAME = "iut_courses"
 
 chart_rules = [
@@ -48,11 +49,13 @@ chart_rules = [
 print("Starting embedding process for Academic Rules...")
 points = []
 
-for r in chart_rules:
+RULES_NS = uuid.uuid5(uuid.NAMESPACE_URL, "iut_academic_rules")
+
+for r,i in enumerate(chart_rules):
     response = client.embeddings.create(input=r,model="text-embedding-3-small")
     point = PointStruct(
-        id = uuid.uuid4().hex,
-        vector=response.data[0].embedding,
+        id = uuid.uuid5(RULES_NS, r).hex,
+        vector=response.data[i].embedding,
         payload= {
             "text": r,
             "type": "academic_rule"

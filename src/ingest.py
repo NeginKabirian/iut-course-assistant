@@ -4,7 +4,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from openai import OpenAI
 from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct
+from qdrant_client.models import Distance, VectorParams, PointStruct , Filter, FieldCondition, MatchValue
 
 os.environ["no_proxy"] = "localhost,127.0.0.1,::1"
 os.environ["NO_PROXY"] = "localhost,127.0.0.1,::1"
@@ -12,15 +12,16 @@ os.environ["NO_PROXY"] = "localhost,127.0.0.1,::1"
 load_dotenv()
 API_KEY = os.environ.get("API_KEY")
 BASE_URL = os.environ.get("BASE_URL", "https://api.metisai.ir/openai/v1")
+QDRANT_URL = os.environ.get("QDRANT_URL", "http://127.0.0.1:6333")
 
 print("Connecting to OpenAI and Qdrant...")
 client = OpenAI(api_key=API_KEY.strip(), base_url=BASE_URL.strip())
-qdrant = QdrantClient(url="http://127.0.0.1:6333")
+qdrant = QdrantClient(url=QDRANT_URL)
 COLLECTION_NAME = "iut_courses"
 
 
 if qdrant.collection_exists(COLLECTION_NAME):
-    qdrant.delete_collection(COLLECTION_NAME)
+    qdrant.delete_collection(COLLECTION_NAME,points_selector=Filter(must=[FieldCondition(key="type", match=MatchValue(value="course"))]),)
     print(f"Old collection '{COLLECTION_NAME}' deleted.")
 
 qdrant.create_collection(
@@ -143,6 +144,7 @@ for i in range(0, len(documents), BATCH_SIZE):
             payload={
                 "text": batch_docs[j]["text"],
                 "course_name": batch_docs[j]["course_name"],
+                "type": "course",
             },
         )
         points.append(point)
