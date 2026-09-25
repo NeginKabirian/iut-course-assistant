@@ -1,23 +1,13 @@
-import os
-from dotenv import load_dotenv
-from openai import OpenAI
-from qdrant_client import QdrantClient
+
 from qdrant_client.models import PointStruct
 import uuid
+from core.config import COLLECTION_NAME
+from core.clients import sync_openai_client as client, sync_qdrant_client as qdrant
 
-os.environ["no_proxy"] = "localhost,127.0.0.1,::1"
-os.environ["NO_PROXY"] = "localhost,127.0.0.1,::1"
 
-
-load_dotenv()
-API_KEY = os.environ.get("API_KEY")
-BASE_URL = os.environ.get("BASE_URL", "https://api.metisai.ir/openai/v1")
-QDRANT_URL = os.environ.get("QDRANT_URL", "http://127.0.0.1:6333")
 
 print("Connecting to OpenAI and Qdrant...")
-client = OpenAI(api_key=API_KEY.strip(), base_url=BASE_URL.strip())
-qdrant = QdrantClient(url=QDRANT_URL)
-COLLECTION_NAME = "iut_courses"
+
 
 chart_rules = [
     # قوانین حداقل واحد (Credit Minimums)
@@ -51,12 +41,12 @@ points = []
 
 RULES_NS = uuid.uuid5(uuid.NAMESPACE_URL, "iut_academic_rules")
 
-for r,i in enumerate(chart_rules):
-    response = client.embeddings.create(input=r,model="text-embedding-3-small")
+for i, r in enumerate(chart_rules):
+    response = client.embeddings.create(input=r, model="text-embedding-3-small")
     point = PointStruct(
-        id = uuid.uuid5(RULES_NS, r).hex,
-        vector=response.data[i].embedding,
-        payload= {
+        id=uuid.uuid5(RULES_NS, r).hex,
+        vector=response.data[0].embedding, 
+        payload={
             "text": r,
             "type": "academic_rule"
         },
