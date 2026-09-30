@@ -99,6 +99,8 @@ async def process_user_query(user_query: str, is_suggestion: bool = False):
             full_response += token
             await msg.stream_token(token)
 
+
+
     history[-1]["content"] = user_query
     history.append({"role": "assistant", "content": full_response})
     if len(history) > MAX_HISTORY:
@@ -109,3 +111,26 @@ async def process_user_query(user_query: str, is_suggestion: bool = False):
         actions.append(cl.Action(name="suggested_question", payload={"value": q}, label=f"💡{q}"))
     msg.actions = actions
     await msg.update()
+
+    '''
+    if not is_suggestion:
+        courses = set()
+        has_rules = False
+        
+        for point in search_res.points:
+            p_type = point.payload.get("type")
+            if p_type == "course" and point.payload.get("course_name"):
+                courses.add(point.payload.get("course_name"))
+            elif p_type == "academic_rule":
+                has_rules = True
+        
+        doc_content = ""
+        if courses:
+            doc_content += f"📄 داکیومنت: {'، '.join(courses)}\n\n"
+        if has_rules:
+            doc_content += "📜 داکیومنت: قوانین آموزشی دانشگاه\n"
+            
+        if doc_content:
+            source_element = cl.Text(content=doc_content.strip(), name="داکیومنت‌های مرجع")
+            msg.elements = [source_element]
+'''

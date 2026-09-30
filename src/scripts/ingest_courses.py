@@ -7,26 +7,15 @@ from core.clients import sync_openai_client as client, sync_qdrant_client as qdr
 
 print("Connecting to OpenAI and Qdrant...")
 
-
-
 if qdrant.collection_exists(COLLECTION_NAME):
-    qdrant.delete(
-        collection_name=COLLECTION_NAME,
-        points_selector=Filter(
-            must=[FieldCondition(key="type", match=MatchValue(value="course"))]
-        )
-    )
     qdrant.delete_collection(collection_name=COLLECTION_NAME)
-
-    print(f"Old collection '{COLLECTION_NAME}' deleted.")
+    print(f"Old collection '{COLLECTION_NAME}' deleted.\n")
 
 qdrant.create_collection(
     collection_name=COLLECTION_NAME,
     vectors_config=VectorParams(size=1536, distance=Distance.COSINE),
 )
 print(f"Collection '{COLLECTION_NAME}' created successfully.\n")
-
-
 
 print("Reading and processing Excel file...")
 df = pd.read_excel("courses.xlsx", skiprows=2, header=None)
@@ -67,9 +56,6 @@ cols_to_fill = [
     "registered",
     "waitlist",
     "gender",
-    "prof_name",  
-    "prof_type", 
-    "prof_role", 
     "description",
 ]
 df[cols_to_fill] = df.groupby(group_id)[cols_to_fill].ffill()
@@ -91,28 +77,36 @@ for code, group in grouped_courses:
     )
 
     prof_dict = {}
+    general_times = [] # لیستی برای زمان‌های بدون استاد (مثل امتحان و حل تمرین)
+
     for index, row in group.iterrows():
         prof = str(row["prof_name"]).strip()
         role = str(row["prof_role"]).strip()
         time_l = str(row["time_loc"]).strip().replace('\n', ' ').replace('\r', '')
 
         if prof:
+            # اگر نام استاد وجود داشت
             prof_key = f"{prof} (مسئولیت: {role})"
             if prof_key not in prof_dict:
                 prof_dict[prof_key] = []
-            
             if time_l:
                 prof_dict[prof_key].append(time_l)
+        else:
+            if time_l:
+                general_times.append(time_l)
 
   
     prof_details = []
     for p_key, times in prof_dict.items():
         if times:
-            
             times_str = " و ".join(times) 
             prof_details.append(f"استاد/دستیار: {p_key} | زمان و مکان: {times_str}")
         else:
             prof_details.append(f"استاد/دستیار: {p_key}")
+
+    if general_times:
+        g_times_str = " و ".join(general_times)
+        prof_details.append(f"سایر زمان‌ها (امتحان/حل تمرین): {g_times_str}")
 
     if prof_details:
         base_text += "جزئیات اساتید و زمان برگزاری: [" + " ؛ ".join(prof_details) + "]. "
