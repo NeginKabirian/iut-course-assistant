@@ -8,3 +8,11 @@ wheels/
 
 # Virtual environments
 .venv
+
+.env
+
+# Ruff cache
+.ruff_cache/
+
+# Excel temporary files
+~$*.xlsx.chainlit/
